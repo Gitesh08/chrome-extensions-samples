@@ -1,3 +1,6 @@
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+
 const inputPrompt = document.body.querySelector('#input-prompt');
 const buttonPrompt = document.body.querySelector('#button-prompt');
 const buttonReset = document.body.querySelector('#button-reset');
@@ -41,11 +44,25 @@ async function initDefaults() {
   }
   const defaults = await chrome.aiOriginTrial.languageModel.capabilities();
   console.log('Model default:', defaults);
-  sliderTemperature.value = defaults.temperature;
-  sliderTopK.value = defaults.topK;
-  labelTopK.textContent = defaults.topK;
-  labelTemperature.textContent = defaults.temperature;
-  labelTemperature.value = defaults.temperature;
+  if (defaults.available !== 'readily') {
+    showResponse(
+      `Model not yet available (current state: "${defaults.available}")`
+    );
+    return;
+  }
+  sliderTemperature.value = defaults.defaultTemperature;
+  // Pending https://issues.chromium.org/issues/367771112.
+  // sliderTemperature.max = defaults.maxTemperature;
+  if (defaults.defaultTopK > 3) {
+    // limit default topK to 3
+    sliderTopK.value = 3;
+    labelTopK.textContent = 3;
+  } else {
+    sliderTopK.value = defaults.defaultTopK;
+    labelTopK.textContent = defaults.defaultTopK;
+  }
+  sliderTopK.max = defaults.maxTopK;
+  labelTemperature.textContent = defaults.defaultTemperature;
 }
 
 initDefaults();
@@ -81,6 +98,7 @@ buttonPrompt.addEventListener('click', async () => {
   showLoading();
   try {
     const params = {
+      systemPrompt: 'You are a helpful and friendly assistant.',
       temperature: sliderTemperature.value,
       topK: sliderTopK.value
     };
@@ -101,15 +119,7 @@ function showLoading() {
 function showResponse(response) {
   hide(elementLoading);
   show(elementResponse);
-  // Make sure to preserve line breaks in the response
-  elementResponse.textContent = '';
-  const paragraphs = response.split(/\r?\n/);
-  for (const paragraph of paragraphs) {
-    if (paragraph) {
-      elementResponse.appendChild(document.createTextNode(paragraph));
-    }
-    elementResponse.appendChild(document.createElement('BR'));
-  }
+  elementResponse.innerHTML = DOMPurify.sanitize(marked.parse(response));
 }
 
 function showError(error) {
